@@ -8,6 +8,7 @@ class TrayIcon(QSystemTrayIcon):
     def __init__(self):
         super().__init__()
         self.setIcon(QIcon("icon.png"))
+        self.setToolTip('PySP - screenshot tool')
 
         self.menu = QMenu()
         self.capture_action = QAction("Capture", self)

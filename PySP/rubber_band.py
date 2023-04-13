@@ -11,7 +11,7 @@ class BorderedRubberBand(QRubberBand):
     def paintEvent(self, event: QPaintEvent) -> None:
         painter = QPainter()
         pen = QPen(Qt.GlobalColor.red)
-        pen.setWidth(2)
+        pen.setWidth(int(self.devicePixelRatioF()))
         pen.setStyle(Qt.PenStyle.SolidLine)
 
         brush = QBrush(Qt.GlobalColor.transparent)
