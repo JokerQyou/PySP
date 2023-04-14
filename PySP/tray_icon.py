@@ -1,6 +1,6 @@
 from PySide6.QtWidgets import QSystemTrayIcon, QMenu, QApplication
 from PySide6.QtGui import QIcon, QAction, QPixmap
-from capture_widget import CaptureWidget
+from capture_widget import CaptureWidget, ImageData
 from image import ImageLabel
 
 
@@ -30,11 +30,11 @@ class TrayIcon(QSystemTrayIcon):
         self.capture_widget.captured.connect(self.handle_new_capture)
         self.capture_widget.showFullScreen()
 
-    def handle_new_capture(self, img: QPixmap):
+    def handle_new_capture(self, img: ImageData):
         # self.capture_widget.destroy()
         print('new captured image!')
-        print(img.width(), 'x', img.height())
-        image = ImageLabel(img)
+        print(img.image.size(), '@', img.position)
+        image = ImageLabel(img.image, img.position)
         self.images.append(image)
         image.destroyed.connect(lambda _: self.images.remove(image))
         image.show()
