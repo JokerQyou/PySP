@@ -1,6 +1,7 @@
 from PySide6.QtCore import Qt, QPoint, QSizeF
-from PySide6.QtWidgets import QLabel, QGraphicsDropShadowEffect, QMenu, QApplication
+from PySide6.QtWidgets import QLabel, QGraphicsDropShadowEffect, QMenu, QApplication, QFileDialog
 from PySide6.QtGui import QPixmap, QAction, QMouseEvent, QClipboard, QWheelEvent, QCursor
+from loguru import logger
 
 
 class ImageLabel(QLabel):
@@ -46,6 +47,10 @@ class ImageLabel(QLabel):
         copy_action.triggered.connect(self.copy_image)
         menu.addAction(copy_action)
 
+        save_action = QAction("Save", self)
+        save_action.triggered.connect(self.save_image)
+        menu.addAction(save_action)
+
         if self.size() != self.original_pixmap.size():
             reset_zoom_action = QAction("Reset Zoom", self)
             reset_zoom_action.triggered.connect(self.reset_zoom)
@@ -61,7 +66,9 @@ class ImageLabel(QLabel):
         QApplication.clipboard().setPixmap(self.pixmap(), mode=QClipboard.Mode.Clipboard)
 
     def destroy_image(self):
+        logger.debug('shot.destroy')
         self.close()
+        self.deleteLater()
 
     def wheelEvent(self, event: QWheelEvent):
         top_widget = QApplication.widgetAt(QCursor.pos())
@@ -89,3 +96,11 @@ class ImageLabel(QLabel):
         self.setPixmap(self.original_pixmap)
         self.setFixedSize(self.original_pixmap.size())
         self.adjustSize()
+
+    def save_image(self):
+        selected = QFileDialog.getSaveFileName(
+            self, "Save image as", filter="PNG image (*.png)", selectedFilter="PNG image (*.png)",
+        )
+        print(selected)
+        if len(selected) > 0 and selected[0] != '':
+            self.original_pixmap.save(selected[0], "png")
