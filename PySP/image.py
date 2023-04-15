@@ -1,6 +1,6 @@
 from PySide6.QtCore import Qt, QPoint, QSizeF, QPropertyAnimation, QEasingCurve, QRect
 from PySide6.QtWidgets import QLabel, QGraphicsDropShadowEffect, QMenu, QApplication, QFileDialog
-from PySide6.QtGui import QPixmap, QAction, QMouseEvent, QClipboard, QWheelEvent, QCursor
+from PySide6.QtGui import QPixmap, QAction, QMouseEvent, QClipboard, QWheelEvent, QCursor, QRegion
 from loguru import logger
 
 
@@ -17,6 +17,8 @@ class ImageLabel(QLabel):
             | Qt.WindowType.BypassWindowManagerHint
         )
         # self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.setStyleSheet("QLabel{ border: 1px solid black; }")
+        # self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, on=True)
 
         # 添加阴影效果
         shadow = QGraphicsDropShadowEffect(self)
@@ -79,33 +81,57 @@ class ImageLabel(QLabel):
             return event.ignore
 
         zoom_factor = 1.1 if event.angleDelta().y() > 0 else 0.9
+        new_size = QSizeF(self.size()) * zoom_factor
         logger.debug(
-            'image.zoom.{op}, delta_y={y}, zoom_factor={zf}, current_size=({cw}*{ch})',
+            'image.zoom.{op}, delta_y={y}, zoom_factor={zf}, from={cw}*{ch}, to={nw}*{nh}',
             op='out'if zoom_factor < 1 else 'in',
             y=event.angleDelta().y(),
             zf=zoom_factor,
             cw=self.size().width(),
             ch=self.size().height(),
+            nw=new_size.width(),
+            nh=new_size.height(),
         )
-        new_size = QSizeF(self.size()) * zoom_factor
         new_pixmap = self.original_pixmap.scaled(
             (new_size * self.devicePixelRatioF()).toSize(),
-            Qt.KeepAspectRatio, Qt.SmoothTransformation,
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation,
         )
         cursor_pos_in_widget = event.position()
         self_pos = self.pos()
         new_pos = self_pos + (
             cursor_pos_in_widget * (1 - zoom_factor)
         ).toPoint()
-        self.setFixedSize(new_pixmap.deviceIndependentSize().toSize())
         self.setPixmap(new_pixmap)
+        self.setFixedSize(new_pixmap.deviceIndependentSize().toSize())
         self.move(new_pos)
 
     def reset_zoom(self):
+        cursor_pos = QCursor.pos()
+        self_pos = self.pos()
+        cursor_pos_in_widget = cursor_pos - self_pos
+        zoom_factor = float(
+            self.original_pixmap.deviceIndependentSize().width()) / float(self.width())
+        new_pos = self_pos + (
+            cursor_pos_in_widget.toPointF() * (1 - zoom_factor)
+        ).toPoint()
+        logger.debug(
+            'current_size={cw}*{ch}, new_size={nw}*{nh}, zoom_factor={zf}, cussor_in=({ciwx}, {ciwy}), new_pos=({nx}, {ny})',
+            cw=self.width(),
+            ch=self.height(),
+            nw=self.original_pixmap.deviceIndependentSize().width(),
+            nh=self.original_pixmap.deviceIndependentSize().height(),
+            zf=zoom_factor,
+            ciwx=cursor_pos_in_widget.x(),
+            ciwy=cursor_pos_in_widget.y(),
+            nx=new_pos.x(),
+            ny=new_pos.y(),
+        )
         self.setPixmap(self.original_pixmap)
         self.setFixedSize(
             self.original_pixmap.deviceIndependentSize().toSize()
         )
+        self.move(new_pos)
         logger.debug(
             'image.zoom.reset, new_size=({w}*{h})',
             w=self.size().width(),
