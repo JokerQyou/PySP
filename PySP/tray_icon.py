@@ -1,10 +1,11 @@
-from PySide6.QtCore import QRect, QPoint, QPropertyAnimation, QEasingCurve
+from PySide6.QtCore import QRect, QPoint, QPropertyAnimation, QEasingCurve, Qt
 from PySide6.QtWidgets import QSystemTrayIcon, QMenu, QApplication
-from PySide6.QtGui import QIcon, QAction, QPixmap, QGuiApplication
-from capture_widget import CaptureWidget, ImageData
+from PySide6.QtGui import QIcon, QAction, QGuiApplication
 from loguru import logger
 
+from shotter import Shotter
 from image import ImageLabel
+from editor import Editor, ImageData
 
 
 class TrayIcon(QSystemTrayIcon):
@@ -13,9 +14,16 @@ class TrayIcon(QSystemTrayIcon):
         self.setIcon(QIcon("icon.png"))
         self.setToolTip('PySP')
 
+        self.images = []
+        self.animations = []
+        self.shotter = Shotter(self)
+        self.editor = Editor()
+        self.editor.edited.connect(self.handle_new_image)
+        self.shotter.captured.connect(self.editor.edit_new_capture)
+
         self.menu = QMenu()
         self.capture_action = QAction("Capture", self)
-        self.capture_action.triggered.connect(self.start_capture)
+        self.capture_action.triggered.connect(self.shotter.take)
         self.menu.addAction(self.capture_action)
 
         self.locate_action = QAction("Locate images", self)
@@ -23,39 +31,45 @@ class TrayIcon(QSystemTrayIcon):
         self.menu.addAction(self.locate_action)
 
         self.quit_action = QAction("Quit", self)
-        self.quit_action.triggered.connect(QApplication.instance().quit)
+        self.quit_action.triggered.connect(self.handle_quit)
         self.menu.addAction(self.quit_action)
 
         self.setContextMenu(self.menu)
 
-        self.activated.connect(self.start_capture)
+        # Pinned images
+        self.activated.connect(self.shotter.take)
 
-        self.images = []
-        self.animations = []
+        logger.debug('PySP started')
 
-    def start_capture(self):
-        self.capture_widget = CaptureWidget()
-        self.capture_widget.captured.connect(self.handle_new_capture)
-        self.capture_widget.showFullScreen()
-
-    def handle_new_capture(self, img: ImageData):
-        # self.capture_widget.destroy()
+    def handle_new_image(self, img: ImageData):
+        image = ImageLabel(
+            img.image,
+            img.position,
+        )
+        self.images.append(image)
         logger.debug(
-            'manager.shot.received size=({w}, {h}) @({x}, {y})',
+            'manager.image.pin size=({w}*{h}), pos=({x}, {y}), indep_size=({iw}*{ih}), dpr={pr}, total_images={n}',
             w=img.image.size().width(),
             h=img.image.size().height(),
             x=img.position.x(),
             y=img.position.y(),
+            iw=img.image.deviceIndependentSize().width(),
+            ih=img.image.deviceIndependentSize().height(),
+            pr=img.image.devicePixelRatio(),
+            n=len(self.images),
         )
-        image = ImageLabel(img.image, img.position)
-        self.images.append(image)
 
         def cleanup():
             self.images.remove(image)
             logger.debug(
-                'manager.shot.destroyed, remaining={n}', n=len(self.images))
+                'manager.image.destroy, total_images={n}', n=len(self.images),
+            )
         image.destroyed.connect(cleanup)
         image.show()
+
+    def handle_quit(self):
+        logger.debug('PySP quit')
+        QApplication.instance().quit()
 
     def move_windows_on_screen(self):
         screen = QGuiApplication.primaryScreen()
@@ -98,4 +112,5 @@ class TrayIcon(QSystemTrayIcon):
                     )
                     self.animations.append(animation)
                     animation.destroyed.connect(
-                        lambda _: self.animations.remove(animation))
+                        lambda _: self.animations.remove(animation)
+                    )

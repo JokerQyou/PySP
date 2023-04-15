@@ -13,9 +13,9 @@ class ImageData:
     position: QPoint
 
 
-class CaptureWidget(QLabel):
+class Editor(QLabel):
 
-    captured = Signal(ImageData)
+    edited = Signal(ImageData)
 
     def __init__(self):
         super().__init__()
@@ -31,10 +31,21 @@ class CaptureWidget(QLabel):
         )
 
         self.rubber_band = BorderedRubberBand(
-            QRubberBand.Shape.Rectangle, self)
+            QRubberBand.Shape.Rectangle, self
+        )
         self.origin = QPoint()
         self.dragging = False
         self.setCursor(QCursor(Qt.CursorShape.CrossCursor))
+        self.setVisible(False)
+        self.original_pixmap = QPixmap()
+
+    def edit_new_capture(self, pixmap: QPixmap):
+        logger.debug('editor.new_capture')
+        self.original_pixmap = pixmap
+        self.origin = QPoint()
+        self.setPixmap(pixmap)
+        self.showFullScreen()
+        pass
 
     def keyPressEvent(self, ev: QKeyEvent) -> None:
         if ev.key() == Qt.Key.Key_Escape:
@@ -47,7 +58,8 @@ class CaptureWidget(QLabel):
             self.origin = event.pos()
             self.dragging = True
             logger.debug(
-                'snap.drag.start @({x}, {y})', x=self.origin.x(), y=self.origin.y())
+                'snap.drag.start @({x}, {y})', x=self.origin.x(), y=self.origin.y(),
+            )
             self.rubber_band.setGeometry(QRect(self.origin, QSize()))
             self.rubber_band.show()
 
@@ -57,27 +69,27 @@ class CaptureWidget(QLabel):
 
     def mouseReleaseEvent(self, event: QMouseEvent):
         if event.button() == Qt.MouseButton.LeftButton:
-            self.setCursor(QCursor(Qt.CursorShape.ArrowCursor))
+            # self.setCursor(QCursor(Qt.CursorShape.ArrowCursor))
             screen = QApplication.primaryScreen()
             screen_geometry = screen.geometry()
 
             topLeft = (
                 self.rubber_band.pos().toPointF() * self.rubber_band.devicePixelRatioF() -
                 screen_geometry.topLeft().toPointF()
-            ).toPoint()
+            )  .toPoint()
             size = QSizeF(
                 self.rubber_band.width() * self.rubber_band.devicePixelRatioF(),
                 self.rubber_band.height() * self.rubber_band.devicePixelRatioF(),
             ).toSize()
             logger.debug(
-                'shot.drag.end, size=({w}, {h})', w=size.width(), h=size.height())
+                'shot.drag.end, size=({w}*{h})', w=size.width(), h=size.height())
             area = QRect(topLeft, size).normalized()
             self.rubber_band.hide()
-            screenshot = screen.grabWindow(0).copy(area)
+            screenshot = self.original_pixmap.copy(area)
 
             data = ImageData(
                 screenshot,
                 (topLeft.toPointF() / self.rubber_band.devicePixelRatioF()).toPoint()
             )
             self.close()
-            self.captured.emit(data)
+            self.edited.emit(data)

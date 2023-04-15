@@ -1,4 +1,4 @@
-from PySide6.QtCore import Qt, QPoint, QSizeF
+from PySide6.QtCore import Qt, QPoint, QSizeF, QPropertyAnimation, QEasingCurve, QRect
 from PySide6.QtWidgets import QLabel, QGraphicsDropShadowEffect, QMenu, QApplication, QFileDialog
 from PySide6.QtGui import QPixmap, QAction, QMouseEvent, QClipboard, QWheelEvent, QCursor
 from loguru import logger
@@ -28,6 +28,8 @@ class ImageLabel(QLabel):
         # 用于记录拖动时的鼠标位置
         self.mouse_offset = QPoint()
         self.move(pos)
+
+        self.animations = []
 
     def mousePressEvent(self, event: QMouseEvent):
         self.raise_()
@@ -63,10 +65,11 @@ class ImageLabel(QLabel):
         menu.exec(event.globalPos())
 
     def copy_image(self):
+        logger.debug('image.copy')
         QApplication.clipboard().setPixmap(self.pixmap(), mode=QClipboard.Mode.Clipboard)
 
     def destroy_image(self):
-        logger.debug('shot.destroy')
+        logger.debug('image.destroy')
         self.close()
         self.deleteLater()
 
@@ -77,7 +80,8 @@ class ImageLabel(QLabel):
 
         zoom_factor = 1.1 if event.angleDelta().y() > 0 else 0.9
         logger.debug(
-            'shot.zoom, delta_y={y}, zoom_factor={zf}, current_size=({cw}, {ch})',
+            'image.zoom.{op}, delta_y={y}, zoom_factor={zf}, current_size=({cw}*{ch})',
+            op='out'if zoom_factor < 1 else 'in',
             y=event.angleDelta().y(),
             zf=zoom_factor,
             cw=self.size().width(),
@@ -88,17 +92,14 @@ class ImageLabel(QLabel):
             (new_size * self.devicePixelRatioF()).toSize(),
             Qt.KeepAspectRatio, Qt.SmoothTransformation,
         )
-        top_widget.setPixmap(new_pixmap)
-        top_widget.setFixedSize(new_pixmap.deviceIndependentSize().toSize())
-        # top_widget.adjustSize()
-
-        # Adjust the position of the window based on the zoom factor and the cursor position.
         cursor_pos_in_widget = event.position()
-        widget_top_left = top_widget.pos()
-        new_pos = widget_top_left + (
+        self_pos = self.pos()
+        new_pos = self_pos + (
             cursor_pos_in_widget * (1 - zoom_factor)
         ).toPoint()
-        top_widget.move(new_pos)
+        self.setFixedSize(new_pixmap.deviceIndependentSize().toSize())
+        self.setPixmap(new_pixmap)
+        self.move(new_pos)
 
     def reset_zoom(self):
         self.setPixmap(self.original_pixmap)
@@ -106,7 +107,7 @@ class ImageLabel(QLabel):
             self.original_pixmap.deviceIndependentSize().toSize()
         )
         logger.debug(
-            'shot.zoom.reset, new_size=({w}, {h})',
+            'image.zoom.reset, new_size=({w}*{h})',
             w=self.size().width(),
             h=self.size().height(),
         )
