@@ -51,7 +51,7 @@ class ImageLabel(QLabel):
         save_action.triggered.connect(self.save_image)
         menu.addAction(save_action)
 
-        if self.size() != self.original_pixmap.size():
+        if self.size() != self.original_pixmap.deviceIndependentSize().toSize():
             reset_zoom_action = QAction("Reset Zoom", self)
             reset_zoom_action.triggered.connect(self.reset_zoom)
             menu.addAction(reset_zoom_action)
@@ -72,17 +72,25 @@ class ImageLabel(QLabel):
 
     def wheelEvent(self, event: QWheelEvent):
         top_widget = QApplication.widgetAt(QCursor.pos())
-        if top_widget is not self:
+        if top_widget is not self or event.angleDelta().y() == 0:
             return event.ignore
 
         zoom_factor = 1.1 if event.angleDelta().y() > 0 else 0.9
+        logger.debug(
+            'shot.zoom, delta_y={y}, zoom_factor={zf}, current_size=({cw}, {ch})',
+            y=event.angleDelta().y(),
+            zf=zoom_factor,
+            cw=self.size().width(),
+            ch=self.size().height(),
+        )
         new_size = QSizeF(self.size()) * zoom_factor
         new_pixmap = self.original_pixmap.scaled(
-            new_size.toSize(), Qt.KeepAspectRatio, Qt.SmoothTransformation,
+            (new_size * self.devicePixelRatioF()).toSize(),
+            Qt.KeepAspectRatio, Qt.SmoothTransformation,
         )
         top_widget.setPixmap(new_pixmap)
-        top_widget.setFixedSize(new_pixmap.size())
-        top_widget.adjustSize()
+        top_widget.setFixedSize(new_pixmap.deviceIndependentSize().toSize())
+        # top_widget.adjustSize()
 
         # Adjust the position of the window based on the zoom factor and the cursor position.
         cursor_pos_in_widget = event.position()
@@ -94,12 +102,20 @@ class ImageLabel(QLabel):
 
     def reset_zoom(self):
         self.setPixmap(self.original_pixmap)
-        self.setFixedSize(self.original_pixmap.size())
-        self.adjustSize()
+        self.setFixedSize(
+            self.original_pixmap.deviceIndependentSize().toSize()
+        )
+        logger.debug(
+            'shot.zoom.reset, new_size=({w}, {h})',
+            w=self.size().width(),
+            h=self.size().height(),
+        )
+        # self.adjustSize()
 
     def save_image(self):
         selected = QFileDialog.getSaveFileName(
-            self, "Save image as", filter="PNG image (*.png)", selectedFilter="PNG image (*.png)",
+            self, "Save image as",
+            filter="PNG image (*.png)", selectedFilter="PNG image (*.png)",
         )
         print(selected)
         if len(selected) > 0 and selected[0] != '':

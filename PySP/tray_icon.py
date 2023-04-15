@@ -85,13 +85,13 @@ class TrayIcon(QSystemTrayIcon):
 
                     # 创建动画
                     animation = QPropertyAnimation(window, b"geometry")
-                    animation.setDuration(300)  # 动画持续时间，单位毫秒
+                    animation.setDuration(170)  # 动画持续时间，单位毫秒
                     animation.setStartValue(window_rect)
                     animation.setEndValue(
                         QRect(QPoint(x, y), window_rect.size())
                     )
                     animation.setEasingCurve(
-                        QEasingCurve.Type.OutCubic
+                        QEasingCurve.Type.OutCirc
                     )  # 设置缓动曲线
                     animation.start(
                         QPropertyAnimation.DeletionPolicy.DeleteWhenStopped

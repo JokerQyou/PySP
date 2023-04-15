@@ -12,17 +12,24 @@ class BorderedRubberBand(QRubberBand):
         self.pen.setWidthF(self.devicePixelRatioF())
         self.pen.setStyle(Qt.PenStyle.SolidLine)
 
-        self.margins = QMarginsF(
-            0,
-            0,
-            self.pen.widthF(),
-            self.pen.widthF(),
-        ).toMargins()
+        self.margins = None
+        if self.devicePixelRatioF() == 1.0:
+            self.margins = QMarginsF(
+                0,
+                0,
+                self.pen.widthF(),
+                self.pen.widthF(),
+            ).toMargins()
 
     def paintEvent(self, event: QPaintEvent) -> None:
         painter = QPainter()
         painter.begin(self)
         painter.setPen(self.pen)
-        painter.drawRect(event.rect().marginsRemoved(self.margins))
+
+        if self.margins is None:
+            area = event.rect()
+        else:
+            area = event.rect().marginsRemoved(self.margins)
+        painter.drawRect(area)
         painter.end()
         return event.accept()

@@ -75,6 +75,9 @@ class CaptureWidget(QLabel):
             self.rubber_band.hide()
             screenshot = screen.grabWindow(0).copy(area)
 
-            data = ImageData(screenshot, topLeft)
+            data = ImageData(
+                screenshot,
+                (topLeft.toPointF() / self.rubber_band.devicePixelRatioF()).toPoint()
+            )
             self.close()
             self.captured.emit(data)
