@@ -2,6 +2,7 @@ from PySide6.QtCore import QRect, QPoint, QPropertyAnimation, QEasingCurve, Qt
 from PySide6.QtWidgets import QSystemTrayIcon, QMenu, QApplication
 from PySide6.QtGui import QIcon, QAction, QGuiApplication
 from loguru import logger
+from typing import List
 
 from shotter import Shotter
 from image import ImageLabel
@@ -14,7 +15,7 @@ class TrayIcon(QSystemTrayIcon):
         self.setIcon(QIcon("icon.png"))
         self.setToolTip('PySP')
 
-        self.images = []
+        self.images: List[ImageLabel] = []
         self.animations = []
         self.shotter = Shotter(self)
         self.editor = Editor()
@@ -77,40 +78,38 @@ class TrayIcon(QSystemTrayIcon):
 
         for window in self.images:
             window_rect = window.geometry()
+            overlap = QRect(screen_rect).intersected(window_rect)
+            if overlap.width() < window_rect.width() * 0.5 or overlap.height() < window_rect.height() * 0.5:
+                x, y = window_rect.x(), window_rect.y()
 
-            if window_rect.width() > 50 and window_rect.height() > 50:
-                overlap = QRect(screen_rect).intersected(window_rect)
-                if overlap.width() < 50 or overlap.height() < 50:
-                    x, y = window_rect.x(), window_rect.y()
+                # 如果窗口在屏幕左侧
+                if x + window_rect.width() * 0.5 < screen_rect.left():
+                    x = screen_rect.left()
+                # 如果窗口在屏幕右侧
+                elif x > screen_rect.right() - window_rect.width() * 0.5:
+                    x = screen_rect.right() - window_rect.width()
 
-                    # 如果窗口在屏幕左侧
-                    if x + window_rect.width() < screen_rect.left() + 50:
-                        x = screen_rect.left()
-                    # 如果窗口在屏幕右侧
-                    elif x > screen_rect.right() - 50:
-                        x = screen_rect.right() - window_rect.width()
+                # 如果窗口在屏幕顶部
+                if y + window_rect.height() * 0.5 < screen_rect.top():
+                    y = screen_rect.top()
+                # 如果窗口在屏幕底部
+                elif y > screen_rect.bottom() - window_rect.height() * 0.5:
+                    y = screen_rect.bottom() - window_rect.height()
 
-                    # 如果窗口在屏幕顶部
-                    if y + window_rect.height() < screen_rect.top() + 50:
-                        y = screen_rect.top()
-                    # 如果窗口在屏幕底部
-                    elif y > screen_rect.bottom() - 50:
-                        y = screen_rect.bottom() - window_rect.height()
-
-                    # 创建动画
-                    animation = QPropertyAnimation(window, b"geometry")
-                    animation.setDuration(170)  # 动画持续时间，单位毫秒
-                    animation.setStartValue(window_rect)
-                    animation.setEndValue(
-                        QRect(QPoint(x, y), window_rect.size())
-                    )
-                    animation.setEasingCurve(
-                        QEasingCurve.Type.OutCirc
-                    )  # 设置缓动曲线
-                    animation.start(
-                        QPropertyAnimation.DeletionPolicy.DeleteWhenStopped
-                    )
-                    self.animations.append(animation)
-                    animation.destroyed.connect(
-                        lambda _: self.animations.remove(animation)
-                    )
+                # 创建动画
+                animation = QPropertyAnimation(window, b"geometry")
+                animation.setDuration(170)  # 动画持续时间，单位毫秒
+                animation.setStartValue(window_rect)
+                animation.setEndValue(
+                    QRect(QPoint(x, y), window_rect.size())
+                )
+                animation.setEasingCurve(
+                    QEasingCurve.Type.OutCirc
+                )  # 设置缓动曲线
+                animation.start(
+                    QPropertyAnimation.DeletionPolicy.DeleteWhenStopped
+                )
+                self.animations.append(animation)
+                animation.destroyed.connect(
+                    lambda _: self.animations.remove(animation)
+                )
