@@ -1,8 +1,10 @@
 from PySide6.QtCore import QRect, QPoint, QPropertyAnimation, QEasingCurve, Qt
 from PySide6.QtWidgets import QSystemTrayIcon, QMenu, QApplication
 from PySide6.QtGui import QIcon, QAction, QGuiApplication
+
 from loguru import logger
 from typing import List
+from qdbus import DBusAdapter
 
 from shotter import Shotter
 from image import ImageLabel
@@ -24,7 +26,7 @@ class TrayIcon(QSystemTrayIcon):
 
         self.menu = QMenu()
         self.capture_action = QAction("Capture", self)
-        self.capture_action.triggered.connect(self.shotter.take)
+        self.capture_action.triggered.connect(self.take_screenshot)
         self.menu.addAction(self.capture_action)
 
         self.locate_action = QAction("Locate images", self)
@@ -32,15 +34,19 @@ class TrayIcon(QSystemTrayIcon):
         self.menu.addAction(self.locate_action)
 
         self.quit_action = QAction("Quit", self)
-        self.quit_action.triggered.connect(self.handle_quit)
+        self.quit_action.triggered.connect(self.quit)
         self.menu.addAction(self.quit_action)
 
         self.setContextMenu(self.menu)
 
-        # Pinned images
-        self.activated.connect(self.shotter.take)
+        self.activated.connect(self.take_screenshot)
+
+        self.dbus_adapter = DBusAdapter(self)
 
         logger.debug('PySP started')
+
+    def take_screenshot(self):
+        self.shotter.take()
 
     def handle_new_image(self, img: ImageData):
         image = ImageLabel(
@@ -68,7 +74,7 @@ class TrayIcon(QSystemTrayIcon):
         image.destroyed.connect(cleanup)
         image.show()
 
-    def handle_quit(self):
+    def quit(self):
         logger.debug('PySP quit')
         QApplication.instance().quit()
 
