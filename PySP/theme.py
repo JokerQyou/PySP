@@ -21,6 +21,7 @@ class IconSet:
     IconZoomReset: QIcon
     IconDelete: QIcon
     IconChangeTheme: QIcon
+    IconAbout: QIcon
 
 
 class ThemeContainer(QObject):
@@ -40,7 +41,7 @@ class ThemeContainer(QObject):
     def load_icon_sets(self) -> List[IconSet]:
         sets = []
         # list directories under resources/ and load icons from there, using directory name as set name
-        for directory in os.listdir("resources"):
+        for directory in sorted(os.listdir("resources")):
             # strip off number suffix from directory name, then trim and replace all - with spaces
             name = ' '.join([
                 s.capitalize()
@@ -61,6 +62,7 @@ class ThemeContainer(QObject):
                 IconChangeTheme=QIcon(
                     os.path.join(icon_dir, "change-theme.png"),
                 ),
+                IconAbout=QIcon(os.path.join(icon_dir, "info.png")),
             ))
         return sets
 

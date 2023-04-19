@@ -5,6 +5,7 @@ from functools import partial
 
 from loguru import logger
 from typing import List
+from about import AboutDialog
 from qdbus import DBusAdapter
 
 from shotter import Shotter
@@ -24,6 +25,7 @@ class TrayIcon(QSystemTrayIcon):
         self.editor = Editor()
         self.editor.edited.connect(self.handle_new_image)
         self.shotter.captured.connect(self.editor.edit_new_capture)
+        self.about_open = False
 
         self.themer = ThemeContainer()
         self.themer.themeChanged.connect(self.update_icons)
@@ -63,6 +65,12 @@ class TrayIcon(QSystemTrayIcon):
             if theme_name == self.themer.theme:
                 action.setChecked(True)
 
+        self.about_action = QAction(
+            self.themer.get_icon('About'), "About", self,
+        )
+        self.about_action.triggered.connect(self.show_about_dialog)
+        self.menu.addAction(self.about_action)
+
         self.menu.addSeparator()
         self.quit_action = QAction(
             self.themer.get_icon('Quit'), "Quit", self,
@@ -83,6 +91,7 @@ class TrayIcon(QSystemTrayIcon):
         self.capture_action.setIcon(self.themer.get_icon('Capture'))
         self.locate_action.setIcon(self.themer.get_icon('Locate'))
         self.themes_menu.setIcon(self.themer.get_icon('ChangeTheme'))
+        self.about_action.setIcon(self.themer.get_icon('About'))
         self.quit_action.setIcon(self.themer.get_icon('Quit'))
 
     def take_screenshot(self):
@@ -160,3 +169,14 @@ class TrayIcon(QSystemTrayIcon):
                 animation.destroyed.connect(
                     lambda _: self.animations.remove(animation)
                 )
+
+    def show_about_dialog(self):
+        if self.about_open:
+            return
+
+        self.about_open = True
+        about_dialog = AboutDialog(self.themer)
+        about_dialog.setModal(True)
+        logger.debug('about.show')
+        about_dialog.exec_()
+        self.about_open = False
