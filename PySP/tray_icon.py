@@ -1,6 +1,7 @@
 from PySide6.QtCore import QRect, QPoint, QPropertyAnimation, QEasingCurve, Qt
 from PySide6.QtWidgets import QSystemTrayIcon, QMenu, QApplication
-from PySide6.QtGui import QIcon, QAction, QGuiApplication
+from PySide6.QtGui import QIcon, QAction, QGuiApplication, QActionGroup
+from functools import partial
 
 from loguru import logger
 from typing import List
@@ -9,12 +10,12 @@ from qdbus import DBusAdapter
 from shotter import Shotter
 from image import ImageLabel
 from editor import Editor, ImageData
+from theme import ThemeContainer
 
 
 class TrayIcon(QSystemTrayIcon):
     def __init__(self):
         super().__init__()
-        self.setIcon(QIcon("icon.png"))
         self.setToolTip('PySP')
 
         self.images: List[ImageLabel] = []
@@ -24,16 +25,48 @@ class TrayIcon(QSystemTrayIcon):
         self.editor.edited.connect(self.handle_new_image)
         self.shotter.captured.connect(self.editor.edit_new_capture)
 
+        self.themer = ThemeContainer()
+        self.themer.themeChanged.connect(self.update_icons)
+
+        self.setIcon(self.themer.get_icon('Capture'))
+
         self.menu = QMenu()
-        self.capture_action = QAction("Capture", self)
+        self.capture_action = QAction(
+            self.themer.get_icon('Capture'), "Capture", self,
+        )
         self.capture_action.triggered.connect(self.take_screenshot)
         self.menu.addAction(self.capture_action)
 
-        self.locate_action = QAction("Locate images", self)
+        self.locate_action = QAction(
+            self.themer.get_icon('Locate'), "Locate images", self,
+        )
         self.locate_action.triggered.connect(self.move_windows_on_screen)
         self.menu.addAction(self.locate_action)
 
-        self.quit_action = QAction("Quit", self)
+        self.menu.addSeparator()
+
+        self.themes_menu = self.menu.addMenu(
+            self.themer.get_icon("ChangeTheme"), "Theme",
+        )
+        self.theme_group = QActionGroup(self.themes_menu)
+        self.theme_group.setExclusive(True)
+
+        # self.theme_group.triggered.connect(update_selected_radio)
+        for theme_name in self.themer.theme_names():
+            action = QAction(theme_name, self)
+            action.triggered.connect(
+                partial(self.themer.change_theme, theme_name)
+            )
+            action.setCheckable(True)
+            self.theme_group.addAction(action)
+            self.themes_menu.addAction(action)
+            if theme_name == self.themer.theme:
+                action.setChecked(True)
+
+        self.menu.addSeparator()
+        self.quit_action = QAction(
+            self.themer.get_icon('Quit'), "Quit", self,
+        )
         self.quit_action.triggered.connect(self.quit)
         self.menu.addAction(self.quit_action)
 
@@ -43,7 +76,14 @@ class TrayIcon(QSystemTrayIcon):
 
         self.dbus_adapter = DBusAdapter(self)
 
-        logger.debug('PySP started')
+        logger.debug('app.started')
+
+    def update_icons(self):
+        self.setIcon(self.themer.get_icon('Capture'))
+        self.capture_action.setIcon(self.themer.get_icon('Capture'))
+        self.locate_action.setIcon(self.themer.get_icon('Locate'))
+        self.themes_menu.setIcon(self.themer.get_icon('ChangeTheme'))
+        self.quit_action.setIcon(self.themer.get_icon('Quit'))
 
     def take_screenshot(self):
         self.shotter.take()
@@ -52,6 +92,7 @@ class TrayIcon(QSystemTrayIcon):
         image = ImageLabel(
             img.image,
             img.position,
+            self.themer,
         )
         self.images.append(image)
         logger.debug(
@@ -75,7 +116,7 @@ class TrayIcon(QSystemTrayIcon):
         image.show()
 
     def quit(self):
-        logger.debug('PySP quit')
+        logger.debug('app.quit')
         QApplication.instance().quit()
 
     def move_windows_on_screen(self):

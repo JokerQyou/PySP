@@ -1,11 +1,13 @@
-from PySide6.QtCore import Qt, QPoint, QSizeF, QPropertyAnimation, QEasingCurve, QRect
+from PySide6.QtCore import Qt, QPoint, QSizeF
 from PySide6.QtWidgets import QLabel, QGraphicsDropShadowEffect, QMenu, QApplication, QFileDialog
-from PySide6.QtGui import QPixmap, QAction, QMouseEvent, QClipboard, QWheelEvent, QCursor, QRegion
+from PySide6.QtGui import QPixmap, QAction, QMouseEvent, QClipboard, QWheelEvent, QCursor
 from loguru import logger
+
+from theme import ThemeContainer
 
 
 class ImageLabel(QLabel):
-    def __init__(self, img: QPixmap, pos: QPoint, parent=None):
+    def __init__(self, img: QPixmap, pos: QPoint, themer: ThemeContainer, parent=None):
         super().__init__(parent)
         self.original_pixmap = img
         self.setPixmap(img)
@@ -32,6 +34,7 @@ class ImageLabel(QLabel):
         self.move(pos)
 
         self.animations = []
+        self.themer = themer
 
     def mousePressEvent(self, event: QMouseEvent):
         self.raise_()
@@ -47,20 +50,28 @@ class ImageLabel(QLabel):
     def show_context_menu(self, event: QMouseEvent):
         menu = QMenu(self)
 
-        copy_action = QAction("Copy", self)
+        copy_action = QAction(
+            self.themer.get_icon('CopyToClipboard'), "Copy", self,
+        )
         copy_action.triggered.connect(self.copy_image)
         menu.addAction(copy_action)
 
-        save_action = QAction("Save", self)
+        save_action = QAction(
+            self.themer.get_icon('Save'), "Save", self,
+        )
         save_action.triggered.connect(self.save_image)
         menu.addAction(save_action)
 
         if self.size() != self.original_pixmap.deviceIndependentSize().toSize():
-            reset_zoom_action = QAction("Reset Zoom", self)
+            reset_zoom_action = QAction(
+                self.themer.get_icon('ZoomReset'), "Reset Zoom", self,
+            )
             reset_zoom_action.triggered.connect(self.reset_zoom)
             menu.addAction(reset_zoom_action)
 
-        destroy_action = QAction("Destroy", self)
+        destroy_action = QAction(
+            self.themer.get_icon('Delete'), "Destroy", self,
+        )
         destroy_action.triggered.connect(self.destroy_image)
         menu.addAction(destroy_action)
 
@@ -78,7 +89,7 @@ class ImageLabel(QLabel):
     def wheelEvent(self, event: QWheelEvent):
         top_widget = QApplication.widgetAt(QCursor.pos())
         if top_widget is not self or event.angleDelta().y() == 0:
-            return event.ignore
+            return event.ignore()
 
         zoom_factor = 1.1 if event.angleDelta().y() > 0 else 0.9
         new_size = QSizeF(self.size()) * zoom_factor
