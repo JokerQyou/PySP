@@ -1,6 +1,6 @@
 from PySide6.QtCore import QRect, QPoint, QPropertyAnimation, QEasingCurve, Qt
-from PySide6.QtWidgets import QSystemTrayIcon, QMenu, QApplication
-from PySide6.QtGui import QIcon, QAction, QGuiApplication, QActionGroup
+from PySide6.QtWidgets import QSystemTrayIcon, QMenu, QApplication, QFileDialog
+from PySide6.QtGui import QIcon, QAction, QGuiApplication, QActionGroup, QPixmap
 from functools import partial
 
 from loguru import logger
@@ -19,16 +19,20 @@ class TrayIcon(QSystemTrayIcon):
         super().__init__()
         self.setToolTip('PySP')
 
+        self.themer = ThemeContainer()
+        self.themer.themeChanged.connect(self.update_icons)
+
         self.images: List[ImageLabel] = []
         self.animations = []
         self.shotter = Shotter(self)
-        self.editor = Editor()
-        self.editor.edited.connect(self.handle_new_image)
-        self.shotter.captured.connect(self.editor.edit_new_capture)
-        self.about_open = False
 
-        self.themer = ThemeContainer()
-        self.themer.themeChanged.connect(self.update_icons)
+        self.editor = Editor(self.themer)
+        self.editor.pinned.connect(self.pin_image)
+        self.editor.copied.connect(self.copy_image)
+        self.editor.saved.connect(self.save_image)
+        self.shotter.captured.connect(self.editor.edit_new_capture)
+
+        self.about_open = False
 
         self.setIcon(self.themer.get_icon('Capture'))
 
@@ -97,7 +101,7 @@ class TrayIcon(QSystemTrayIcon):
     def take_screenshot(self):
         self.shotter.take()
 
-    def handle_new_image(self, img: ImageData):
+    def pin_image(self, img: ImageData):
         image = ImageLabel(
             img.image,
             img.position,
@@ -123,6 +127,19 @@ class TrayIcon(QSystemTrayIcon):
             )
         image.destroyed.connect(cleanup)
         image.show()
+
+    def copy_image(self, pixmap: QPixmap):
+        QApplication.clipboard().setPixmap(pixmap)
+
+    def save_image(self, pixmap: QPixmap):
+        selected = QFileDialog.getSaveFileName(
+            None,
+            "Save image as",
+            filter="PNG image (*.png)",
+            selectedFilter="PNG image (*.png)",
+        )
+        if len(selected) > 0 and selected[0] != '':
+            pixmap.save(selected[0], "png")
 
     def quit(self):
         logger.debug('app.quit')
