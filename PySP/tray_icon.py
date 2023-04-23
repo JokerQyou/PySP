@@ -10,7 +10,7 @@ from qdbus import DBusAdapter
 
 from shotter import Shotter
 from image import ImageLabel
-from editor import Editor, ImageData
+from editor import EditorWindow, ImageData
 from theme import ThemeContainer
 
 
@@ -26,7 +26,7 @@ class TrayIcon(QSystemTrayIcon):
         self.animations = []
         self.shotter = Shotter(self)
 
-        self.editor = Editor(self.themer)
+        self.editor = EditorWindow(self.themer)
         self.editor.pinned.connect(self.pin_image)
         self.editor.copied.connect(self.copy_image)
         self.editor.saved.connect(self.save_image)
