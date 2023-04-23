@@ -178,6 +178,8 @@ class EditorView(QGraphicsView):
             # resize the selection area if cursor is outside the selection area
             else:
                 area = self.selectionArea.normalized()
+                if self.selectionArea != area:
+                    self.selectionArea = area
                 # if cursor is inside the selection area, drag the selection area
                 if area.adjusted(6, 6, -6, -6).contains(point):
                     self.draggingOrigin = point
@@ -413,12 +415,9 @@ class EditorWindow(QLabel):
     def closeEvent(self, event):
         self.toolbar.hide()
         self.scene.clear()
-        self.original_pixmap = QPixmap()
-        self.selectionArea = QRect()
-        self.dragging = False
-        # self.hide()
-        # return event.ignore()
-        event.accept()
+        self.editorView.reset()
+        self.hide()
+        return event.ignore()
 
     def update_toolbar(self, selectionArea: QRect):
         area = selectionArea.normalized()
