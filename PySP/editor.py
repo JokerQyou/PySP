@@ -96,7 +96,7 @@ class EditorView(QGraphicsView):
 
         self.original_pixmap = pixmap
         self.scene().setSceneRect(pixmap.rect())
-        self.setFixedSize(pixmap.size())
+        self.setFixedSize(pixmap.deviceIndependentSize().toSize())
         self.setCursor(QCursor(Qt.CursorShape.CrossCursor))
         self.screenMask.setRect(self.scene().sceneRect())
         self.scene().addPixmap(pixmap)
@@ -157,8 +157,14 @@ class EditorView(QGraphicsView):
     def update_selection_area(self):
         area = self.selectionArea.normalized()
         if not area.isEmpty():
-            self.selectionAreaItem.setZValue(9)  # FIXME
-            self.selectionAreaItem.setPixmap(self.original_pixmap.copy(area))
+            dpr = self.original_pixmap.devicePixelRatioF()
+            pixmap_area = QRectF(
+                area.topLeft().toPointF() * dpr,
+                area.size().toSizeF() * dpr,
+            ).toRect()
+            self.selectionAreaItem.setPixmap(
+                self.original_pixmap.copy(pixmap_area)
+            )
             self.selectionAreaItem.setPos(area.topLeft())
             # self.selectionAreaItem.stackBefore(self.screenMask)
             self.selectionUpdated.emit(area)
@@ -324,16 +330,12 @@ class EditorView(QGraphicsView):
 
     def get_result(self) -> QPixmap:
         area = self.selectionArea.normalized()
-        screen = QApplication.primaryScreen()
-        screen_geometry = screen.geometry()
-
         dpr = self.original_pixmap.devicePixelRatioF()
 
-        topLeft = (
-            area.topLeft().toPointF() * dpr - screen_geometry.topLeft().toPointF()
-        ).toPoint()
-        size = QSizeF(area.width() * dpr, area.height() * dpr).toSize()
-        pixmap_area = QRectF(topLeft, size).toRect()
+        pixmap_area = QRectF(
+            area.topLeft().toPointF() * dpr,
+            area.size().toSizeF() * dpr,
+        ).toRect()
         screenshot = self.original_pixmap.copy(pixmap_area)
         return screenshot
 
