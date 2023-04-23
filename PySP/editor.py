@@ -3,8 +3,8 @@ from enum import Enum
 
 from PySide6.QtWidgets import QApplication
 from dataclasses import dataclass
-from PySide6.QtCore import Qt, QPoint, QRect, QRectF, QSize, QObject, Signal, QSizeF
-from PySide6.QtGui import QPixmap, QPainter, QCursor, QColor, QScreen, QMouseEvent, QKeyEvent, QPen, QAction, QBrush
+from PySide6.QtCore import Qt, QPoint, QRect, QRectF, QSize, QObject, Signal, QSizeF, QMargins
+from PySide6.QtGui import QPixmap, QPainter, QCursor, QColor, QScreen, QMouseEvent, QKeyEvent, QPen, QAction, QBrush, QFont
 from PySide6.QtWidgets import QLabel, QRubberBand, QApplication, QGraphicsScene, QGraphicsView, QToolBar, QFrame, QGraphicsPixmapItem, QGraphicsRectItem
 from PySide6.QtGui import QGuiApplication
 from PIL import ImageQt, Image
@@ -107,7 +107,7 @@ class EditorView(QGraphicsView):
 
     def update_selection_border(self):
         area = self.selectionArea.normalized()
-        self.selectionBorder.setRect(area)
+        self.selectionBorder.setRect(area.adjusted(-1, -1, 1, 1))
         # draw four small circle points on the corners
         # self.selectionBorder.
 
@@ -398,7 +398,30 @@ class EditorWindow(QLabel):
 
         self.toolbar = toolbar
         self.toolbar.hide()
-        self.editorView.selectionUpdated.connect(self.update_toolbar)
+        self.editorView.selectionUpdated.connect(self.update_widgets)
+
+        self.size_tip = QLabel(self)
+        tip_font = QFont("Fira Code", 12)
+        if not tip_font.exactMatch():
+            for family in QFont.families():
+                if 'Mono' in family:
+                    tip_font.setFamily(family)
+                    break
+        self.size_tip.setFont(tip_font)
+        self.size_tip.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        # 9999×9999 px = 12 chracters
+        tip_rect = self.size_tip.fontMetrics().boundingRect("9999×9999 px")
+        self.size_tip.setFixedSize(
+            tip_rect.size().grownBy(QMargins(3, 4, 3, 4))
+        )
+        # use a dark color for background and light color for text
+        self.size_tip.setStyleSheet('''
+            QLabel {
+                background-color: #2C2C2C;
+                color: #F3F3F3;
+            }
+        ''')
+        self.size_tip.hide()
 
         self.themer.themeChanged.connect(self.update_icons)
 
@@ -416,12 +439,13 @@ class EditorWindow(QLabel):
 
     def closeEvent(self, event):
         self.toolbar.hide()
+        self.size_tip.hide()
         self.scene.clear()
         self.editorView.reset()
         self.hide()
         return event.ignore()
 
-    def update_toolbar(self, selectionArea: QRect):
+    def update_widgets(self, selectionArea: QRect):
         area = selectionArea.normalized()
         if area.isEmpty():
             self.toolbar.hide()
@@ -429,22 +453,35 @@ class EditorWindow(QLabel):
 
         if not self.toolbar.isVisible():
             self.toolbar.show()
-        self.action_copy.setEnabled(not area.isEmpty())
-        self.action_save.setEnabled(not area.isEmpty())
-        self.action_pin.setEnabled(not area.isEmpty())
-        self.adjust_toolbar_position(selectionArea)
 
-    def adjust_toolbar_position(self, selectionArea: QRect):
+        if not self.size_tip.isVisible():
+            self.size_tip.show()
+
+        self.adjust_widget_positions(selectionArea)
+
+    def adjust_widget_positions(self, selectionArea: QRect):
+        outsideGap = 5
         # when there's a valid selection area, put the toolbar:
         #  - if there's enough space below the selection area, below the selection area (to the left)
         #  - else: on the bottom line of selection area (also to the left)
         area = selectionArea.normalized()
 
-        toolbarTopLeft = area.bottomLeft()
+        toolbarTopLeft = area.bottomLeft() + QPoint(0, outsideGap + 2)
         # toolbarTopLeft.setX(toolbarTopLeft.x() - 2)  # border width is 2px
         if toolbarTopLeft.y() + self.toolbar.height() > self.height():
-            toolbarTopLeft.setY(area.bottomLeft().y() - self.toolbar.height())
+            toolbarTopLeft.setY(
+                area.bottomLeft().y() - self.toolbar.height() + 2
+            )
         self.toolbar.move(toolbarTopLeft)
+
+        # put size tip label above the selection area, with a gap
+        # if there's not enough space above the selection area,
+        # try to put it inside the selection area (to the top)
+        sizeTipTopLeft = area.topLeft() - QPoint(0, self.size_tip.height() + outsideGap)
+        if sizeTipTopLeft.y() < 0:
+            sizeTipTopLeft.setY(area.topLeft().y())
+        self.size_tip.setText(f'{area.width()}×{area.height()} px')
+        self.size_tip.move(sizeTipTopLeft)
 
     def pin_result(self):
         area = self.editorView.selectionArea.normalized()  # FIXME
