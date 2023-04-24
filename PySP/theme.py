@@ -23,6 +23,7 @@ class IconSet:
     IconChangeTheme: QIcon
     IconAbout: QIcon
     IconPin: QIcon
+    IconText: QIcon
 
 
 class ThemeContainer(QObject):
@@ -65,6 +66,7 @@ class ThemeContainer(QObject):
                 ),
                 IconAbout=QIcon(os.path.join(icon_dir, "info.png")),
                 IconPin=QIcon(os.path.join(icon_dir, "pin.png")),
+                IconText=QIcon(os.path.join(icon_dir, "text.png")),
             ))
         return sets
 

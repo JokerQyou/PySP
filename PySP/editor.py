@@ -1,17 +1,20 @@
 import sys
 from enum import Enum
+from functools import partial
+from typing import List
+from dataclasses import dataclass
 
 from PySide6.QtWidgets import QApplication
-from dataclasses import dataclass
 from PySide6.QtCore import Qt, QPoint, QRect, QRectF, QSize, QObject, Signal, QSizeF, QMargins
-from PySide6.QtGui import QPixmap, QPainter, QCursor, QColor, QScreen, QMouseEvent, QKeyEvent, QPen, QAction, QBrush, QFont
-from PySide6.QtWidgets import QLabel, QRubberBand, QApplication, QGraphicsScene, QGraphicsView, QToolBar, QFrame, QGraphicsPixmapItem, QGraphicsRectItem
+from PySide6.QtGui import QPixmap, QPainter, QCursor, QColor, QScreen, QMouseEvent, QKeyEvent, QPen, QAction, QBrush, QFont, QActionGroup, QTransform, QInputMethodEvent
+from PySide6.QtWidgets import QLabel, QApplication, QGraphicsScene, QGraphicsView, QToolBar, QFrame, QGraphicsPixmapItem, QGraphicsRectItem, QGraphicsItem, QGraphicsTextItem, QGraphicsSceneMouseEvent, QGraphicsSceneHoverEvent, QGraphicsSceneContextMenuEvent
 from PySide6.QtGui import QGuiApplication
 from PIL import ImageQt, Image
 from mss import ScreenShotError, mss
 from loguru import logger
 
 from theme import ThemeContainer
+from op_text import NodeTag
 
 
 @dataclass
@@ -35,6 +38,11 @@ class SelectionBorder(QGraphicsRectItem):
         )
 
 
+class Op(Enum):
+    None_ = 0
+    Text = 1
+
+
 class ResizeEdge(Enum):
     None_ = 0
     TopLeft = 1
@@ -49,6 +57,7 @@ class ResizeEdge(Enum):
 
 class EditorView(QGraphicsView):
     selectionUpdated = Signal(QRect)
+    editorClosed = Signal()
 
     def __init__(self, scene: QGraphicsScene, parent=None):
         super().__init__(scene, parent)
@@ -75,6 +84,10 @@ class EditorView(QGraphicsView):
         self.screenMask = QGraphicsRectItem(self.scene().sceneRect())
         # 原始的完整图片
         self.original_pixmap = QPixmap()
+        # 当前的操作
+        self.op = Op.None_
+        # 所有添加到场景（画布）中的项
+        self.history: List[QGraphicsItem] = []
 
     def reset(self):
         self.scene().clear()
@@ -113,6 +126,14 @@ class EditorView(QGraphicsView):
 
     def update_cursor_shape(self, pos: QPoint):
         area = self.selectionArea.normalized()
+        if area.isEmpty():
+            self.setCursor(QCursor(Qt.CursorShape.CrossCursor))
+            return
+
+        if self.op == Op.Text:
+            self.setCursor(QCursor(Qt.CursorShape.IBeamCursor))
+            return
+
         # if cursor is on the border, change to resize cursor
         if area.adjusted(5, 5, -5, -5).contains(pos):
             self.setCursor(QCursor(Qt.CursorShape.SizeAllCursor))
@@ -154,6 +175,10 @@ class EditorView(QGraphicsView):
                 #  FIXME
                 self.setCursor(QCursor(Qt.CursorShape.CrossCursor))
 
+    def selectOp(self, op: Op):
+        self.op = op
+        self.update_cursor_shape(self.mapFromGlobal(QCursor.pos()))
+
     def update_selection_area(self):
         area = self.selectionArea.normalized()
         if not area.isEmpty():
@@ -170,15 +195,31 @@ class EditorView(QGraphicsView):
             self.selectionUpdated.emit(area)
             self.update_selection_border()
 
+    # def keyPressEvent(self, event: QKeyEvent):
+    #     if event.key() == Qt.Key.Key_Escape:
+    #         self.editorClosed.emit()
+    #     super().keyPressEvent(event)
+
     def mousePressEvent(self, event: QMouseEvent):
         if event.button() == Qt.MouseButton.LeftButton:
             point = event.position().toPoint()
+
+            # when double clicking, check if an item is under the cursor
+            # and if so, let the item handle the event (typically entering edit mode)
+            if event.type() == QMouseEvent.Type.MouseButtonDblClick:
+                return super().mousePressEvent(event)
+
             # create a new selection area
             if self.selectionArea.normalized().isEmpty():
-                logger.debug('drag.start @({x}, {y})',
-                             x=point.x(), y=point.y())
+                logger.debug(
+                    'drag.start @({x}, {y})', x=point.x(), y=point.y(),
+                )
                 self.dragging = True
                 self.selectionArea.setTopLeft(event.position().toPoint())
+                # this is intentionally left out because on Hi-DPI screens
+                # it would produce tiny selection area (1x1 px) that's hard to see,
+                # and it's not very useful anyway.
+                # so we only update the selection area when the mouse is moved
                 # self.update_selection_area()
                 # self.update()
             # resize the selection area if cursor is outside the selection area
@@ -186,6 +227,28 @@ class EditorView(QGraphicsView):
                 area = self.selectionArea.normalized()
                 if self.selectionArea != area:
                     self.selectionArea = area
+                    logger.debug('selection area normalized on the fly')
+
+                if self.op == Op.Text:
+                    # check if there's already a text item under the cursor
+                    item = self.scene().itemAt(point, QTransform())
+                    if item is None or item in [self.screenMask, self.selectionArea, self.selectionBorder]:
+                        text_item = NodeTag('text')
+                        self.history.append(text_item)
+                        self.scene().addItem(text_item)
+                        # put text item at cursor position, align the cursor position to center of left edge of text item
+                        text_item.setPos(
+                            point.x(),
+                            point.y() - text_item.boundingRect().height() / 2
+                        )
+                        logger.debug(
+                            'item.text added @({x}, {y})', x=point.x(), y=point.y()
+                        )
+                    elif isinstance(item, NodeTag):
+                        item.setFocus()
+                        logger.debug('item.text edit')
+                    return super().mousePressEvent(event)
+
                 # if cursor is inside the selection area, drag the selection area
                 if area.adjusted(6, 6, -6, -6).contains(point):
                     self.draggingOrigin = point
@@ -282,6 +345,9 @@ class EditorView(QGraphicsView):
         point = event.position().toPoint()
         self.update_cursor_shape(point)
 
+        if self.op != Op.None_:
+            return super().mouseMoveEvent(event)
+
         if self.resizeEdge == ResizeEdge.TopLeft:
             self.selectionArea.setTopLeft(point)
         elif self.resizeEdge == ResizeEdge.TopRight:
@@ -304,6 +370,9 @@ class EditorView(QGraphicsView):
         self.update_selection_area()
 
     def mouseReleaseEvent(self, event: QMouseEvent):
+        if self.op != Op.None_:
+            return super().mouseReleaseEvent(event)
+
         if event.button() == Qt.MouseButton.LeftButton:
             point = event.position().toPoint()
             if self.dragging:
@@ -329,6 +398,10 @@ class EditorView(QGraphicsView):
                 return
 
     def get_result(self) -> QPixmap:
+        self.scene().clearFocus()
+        self.scene().clearSelection()
+        self.scene().update()
+
         area = self.selectionArea.normalized()
         dpr = self.original_pixmap.devicePixelRatioF()
 
@@ -336,8 +409,16 @@ class EditorView(QGraphicsView):
             area.topLeft().toPointF() * dpr,
             area.size().toSizeF() * dpr,
         ).toRect()
-        screenshot = self.original_pixmap.copy(pixmap_area)
-        return screenshot
+
+        pixmap = self.original_pixmap.copy(pixmap_area)
+        painter = QPainter(pixmap)
+        self.scene().render(
+            painter,
+            QRect(QPoint(), pixmap_area.size()),
+            pixmap_area,
+            Qt.AspectRatioMode.KeepAspectRatio,
+        )
+        return pixmap
 
 
 class EditorWindow(QLabel):
@@ -356,6 +437,7 @@ class EditorWindow(QLabel):
             | Qt.WindowType.FramelessWindowHint
         )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.setAttribute(Qt.WidgetAttribute.WA_InputMethodEnabled)
         self.setWindowState(
             self.windowState()
             | Qt.WindowState.WindowFullScreen
@@ -375,6 +457,21 @@ class EditorWindow(QLabel):
                 border: 2px solid #007ACC;
             }
         """)
+        self.toolGroup = QActionGroup(self)
+        self.toolGroup.setExclusive(True)
+        self.action_op_text: QAction = toolbar.addAction(
+            self.themer.get_icon("Text"), "Pin",
+        )
+        self.action_op_text.setCheckable(True)
+        self.toolGroup.addAction(self.action_op_text)
+        self.action_op_text.triggered.connect(
+            partial(self.select_tool, Op.Text)
+        )
+        self.action_op_text.toggled.connect(
+            partial(self.select_tool, Op.Text)
+        )
+
+        toolbar.addSeparator()
         self.action_cancel: QAction = toolbar.addAction(
             self.themer.get_icon("Quit"), "Cancel",
         )
@@ -399,6 +496,7 @@ class EditorWindow(QLabel):
         self.toolbar = toolbar
         self.toolbar.hide()
         self.editorView.selectionUpdated.connect(self.update_widgets)
+        self.editorView.editorClosed.connect(self.close)
 
         self.size_tip = QLabel(self)
         tip_font = QFont("Fira Code", 12)
@@ -424,6 +522,20 @@ class EditorWindow(QLabel):
         self.size_tip.hide()
 
         self.themer.themeChanged.connect(self.update_icons)
+
+    def select_tool(self, op: Op):
+        # click checked action to uncheck it
+        if self.editorView.op == op:
+            self.toolGroup.setExclusive(False)
+            if op == Op.Text:
+                self.action_op_text.setChecked(False)
+            self.editorView.selectOp(Op.None_)
+            self.toolGroup.setExclusive(True)
+        else:
+            self.toolGroup.checkedAction().setChecked(False)
+            if op == Op.Text:
+                self.action_op_text.setChecked(True)
+            self.editorView.selectOp(op)
 
     def update_icons(self):
         self.setWindowIcon(self.themer.get_icon("Capture"))
@@ -520,6 +632,40 @@ if __name__ == '__main__':
     )
 
     themer = ThemeContainer()
-    editor = EditorWindow(themer)
+
+    class TmpEditorWindow(EditorWindow):
+        def closeEvent(self, event):
+            logger.debug('editor.close')
+            return event.accept()
+
+    editor = TmpEditorWindow(themer)
     editor.edit_new_capture(pixmap)
+
+    text_item = NodeTag('text 1')
+    text_item.setPos(300, 400)
+    editor.editorView.history.append(text_item)
+    editor.editorView.scene().addItem(text_item)
+
+    text_2 = QGraphicsTextItem('text 2')
+    text_2.setPos(400, 400)
+    text_2.setTextInteractionFlags(
+        Qt.TextInteractionFlag.TextEditorInteraction)
+    text_2.setFlags(
+        QGraphicsItem.GraphicsItemFlag.ItemIsSelectable
+        | QGraphicsItem.GraphicsItemFlag.ItemIsMovable
+        | QGraphicsItem.GraphicsItemFlag.ItemIsFocusable
+        | QGraphicsItem.GraphicsItemFlag.ItemStopsClickFocusPropagation
+    )
+    text_2.setZValue(10)
+    text_2.setDefaultTextColor(Qt.GlobalColor.green)
+    editor.editorView.history.append(text_2)
+    editor.editorView.scene().addItem(text_2)
+
+    def save_test_image(image: QPixmap):
+        logger.debug('save_test_image')
+        image.save('/tmp/test.png')
+        editor.close()
+
+    editor.saved.connect(save_test_image)
+
     sys.exit(app.exec())
