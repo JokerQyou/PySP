@@ -31,7 +31,7 @@ class NodeTag(QGraphicsTextItem):
         self.setAcceptHoverEvents(True)
         self.setPlainText(text)
         self.setDefaultTextColor(Qt.GlobalColor.red)
-        self.setFont(QFont("Fira Code", 14))
+        self.setFont(QFont("Fira Code", 16))
         self.setPos(0, 0)
         self.setZValue(12)
 
@@ -106,31 +106,23 @@ class NodeTag(QGraphicsTextItem):
         rect = self.boundingRect()
         if point.x() < handle_size and point.y() < handle_size:
             # top left
-            logger.debug('text.top.left, cursor-> \\')
             return Qt.CursorShape.SizeFDiagCursor
         elif point.x() > rect.width() - handle_size and point.y() < handle_size:
             # top right
-            logger.debug('text.top.right, cursor-> /')
             return Qt.CursorShape.SizeBDiagCursor
         elif point.x() < handle_size and point.y() > rect.height() - handle_size:
             # bottom left
-            logger.debug('text.bottom.left, cursor-> /')
             return Qt.CursorShape.SizeBDiagCursor
         elif point.x() > rect.width() - handle_size and point.y() > rect.height() - handle_size:
             # bottom right
-            logger.debug('text.bottom.right, cursor-> \\')
             return Qt.CursorShape.SizeFDiagCursor
         # check if mouse is on one of the borders, and if so, change to move cursor
         elif point.x() < handle_size or point.x() > rect.width() - handle_size:
-            logger.debug('text.left_or_right, cursor-> move')
             return Qt.CursorShape.DragMoveCursor
         elif point.y() < handle_size or point.y() > rect.height() - handle_size:
-            logger.debug('text.top_or_bottom, cursor-> move')
             return Qt.CursorShape.DragMoveCursor
         else:
-            logger.debug('text.content, cursor-> I')
             return Qt.CursorShape.IBeamCursor
-            # self.unsetCursor()
 
     def mousePressEvent(self, event: QGraphicsSceneMouseEvent) -> None:
         point = event.pos()
@@ -181,35 +173,14 @@ class NodeTag(QGraphicsTextItem):
                 preview.setBottomLeft(scene_point)
             elif self.resizing_dir == ResizeDir.BottomRight:
                 preview.setBottomRight(scene_point)
-            logger.debug(f"preview: {preview}, base: {base}")
-            # transform = self.scale_transform
-            # self.scale_transform.setOrigin(base.center())
-            # self.scale_transform.setXScale(preview.width() / base.width())
-            # self.scale_transform.setYScale(preview.height() / base.height())
-            # self.setTransform(self.scale_transform, False)
-            # self.scale_transform = transform
+
             scale = max(
                 preview.width() / base.width(),
                 preview.height() / base.height(),
             ) * self.current_scale
-            logger.debug(f"scale: {scale}")
-            self.prepareGeometryChange()
-            # calculate new position
+            logger.debug(f"text.scale: {scale:.2f}")
             self.setTransformOriginPoint(rect.center())
-            # if self.resizing_dir == ResizeDir.TopLeft:
-            #     # scale based on right bottom, so keep right bottom in place
-            #     self.setTransformOriginPoint(base.bottomRight())
-            # elif self.resizing_dir == ResizeDir.TopRight:
-            #     # scale based on left bottom, so keep left bottom in place
-            #     self.setTransformOriginPoint(base.bottomLeft())
-            # elif self.resizing_dir == ResizeDir.BottomLeft:
-            #     # scale based on right top, so keep right top in place
-            #     self.setTransformOriginPoint(base.topRight())
-            # elif self.resizing_dir == ResizeDir.BottomRight:
-            #     # scale based on left top, so keep left top in place
-            #     self.setTransformOriginPoint(base.topLeft())
             self.setScale(scale)
-            self.update()
             self.current_scale = scale
             return
 
