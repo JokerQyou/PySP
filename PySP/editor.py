@@ -6,7 +6,7 @@ from dataclasses import dataclass
 
 from PySide6.QtWidgets import QApplication
 from PySide6.QtCore import Qt, QPoint, QRect, QRectF, QSize, QObject, Signal, QSizeF, QMargins
-from PySide6.QtGui import QPixmap, QPainter, QCursor, QColor, QScreen, QMouseEvent, QKeyEvent, QPen, QAction, QBrush, QFont, QActionGroup, QTransform, QInputMethodEvent
+from PySide6.QtGui import QPixmap, QPainter, QCursor, QColor, QScreen, QMouseEvent, QKeyEvent, QPen, QAction, QBrush, QFont, QActionGroup, QTransform, QInputMethodEvent, QTextCursor
 from PySide6.QtWidgets import QLabel, QApplication, QGraphicsScene, QGraphicsView, QToolBar, QFrame, QGraphicsPixmapItem, QGraphicsRectItem, QGraphicsItem, QGraphicsTextItem, QGraphicsSceneMouseEvent, QGraphicsSceneHoverEvent, QGraphicsSceneContextMenuEvent
 from PySide6.QtGui import QGuiApplication
 from PIL import ImageQt, Image
@@ -103,6 +103,9 @@ class EditorView(QGraphicsView):
         self.screenMask.setBrush(QBrush(QColor(0, 0, 0, 128)))
         self.screenMask.setPen(QPen(Qt.GlobalColor.transparent))
         self.original_pixmap = QPixmap()
+        self.selectOp(Op.None_)
+        self.history.clear()
+        self.unsetCursor()
 
     def start_edit(self, pixmap: QPixmap):
         self.reset()  # TODO Remove this
@@ -110,13 +113,13 @@ class EditorView(QGraphicsView):
         self.original_pixmap = pixmap
         self.scene().setSceneRect(pixmap.rect())
         self.setFixedSize(pixmap.deviceIndependentSize().toSize())
-        self.setCursor(QCursor(Qt.CursorShape.CrossCursor))
         self.screenMask.setRect(self.scene().sceneRect())
         self.scene().addPixmap(pixmap)
         self.scene().addItem(self.screenMask)
         self.scene().addItem(self.selectionAreaItem)
         self.scene().addItem(self.selectionBorder)
         self.update_selection_area()
+        self.update_cursor_shape(QCursor.pos())
 
     def update_selection_border(self):
         area = self.selectionArea.normalized()
@@ -133,12 +136,25 @@ class EditorView(QGraphicsView):
         if self.op == Op.Text:
             # check if there's a text item under the cursor
             item = self.scene().itemAt(pos, QTransform())
-            if item is not None and isinstance(item, NodeTag):
-                item.update_cursor_shape(item.mapFromScene(pos))
-                pass
-            else:
+            if item is None:
+                return self.setCursor(QCursor(Qt.CursorShape.IBeamCursor))
+            elif isinstance(item, NodeTag):
+                logger.debug(
+                    "over.text, text={}, pos={}",
+                    item.toPlainText(), pos,
+                )
+                shape = item.get_cursor_shape(item.mapFromScene(pos))
+                return self.setCursor(shape)
+            elif item in [self.screenMask, self.selectionAreaItem, self.selectionBorder]:
+                # self.unsetCursor()
                 self.setCursor(QCursor(Qt.CursorShape.IBeamCursor))
-            return
+                return
+            else:
+                pass
+                # item.update_cursor_shape(item.mapFromScene(pos))
+            # return
+        # elif self.op == Op.None_:
+        #     self.unsetCursor()
 
         # if cursor is on the border, change to resize cursor
         if area.adjusted(5, 5, -5, -5).contains(pos):
@@ -178,10 +194,13 @@ class EditorView(QGraphicsView):
             elif at_top or at_bottom or on_top or on_bottom:
                 self.setCursor(QCursor(Qt.CursorShape.SizeVerCursor))
             else:
-                self.unsetCursor()
+                self.setCursor(QCursor(Qt.CursorShape.CrossCursor))
+                # self.unsetCursor()
 
     def selectOp(self, op: Op):
         self.op = op
+        if self.op == Op.None_:
+            self.scene().clearFocus()
         self.update_cursor_shape(self.mapFromGlobal(QCursor.pos()))
 
     def update_selection_area(self):
@@ -256,6 +275,9 @@ class EditorView(QGraphicsView):
                         logger.debug(
                             'item.text added @({x}, {y})', x=point.x(), y=point.y()
                         )
+                        cursor = text_item.textCursor()
+                        cursor.select(QTextCursor.SelectionType.Document)
+                        text_item.setTextCursor(cursor)
                     elif isinstance(item, NodeTag):
                         item.setFocus()
                         logger.debug('item.text edit')
@@ -415,21 +437,36 @@ class EditorView(QGraphicsView):
         self.scene().update()
 
         area = self.selectionArea.normalized()
+        logger.debug(
+            'selection_area=({x}, {y}) size=({w}×{h})',
+            x=area.x(), y=area.y(),
+            w=area.width(), h=area.height(),
+        )
         dpr = self.original_pixmap.devicePixelRatioF()
 
         pixmap_area = QRectF(
-            area.topLeft().toPointF() * dpr,
+            area.topLeft().toPointF(),  # somehow the topleft point coordinate is correct
+            # but the size (width and height) needs to be scaled by dpr
             area.size().toSizeF() * dpr,
         ).toRect()
+        logger.debug(
+            'pixmap_area=({x}, {y}) size=({w}×{h}), dpr={dpr}',
+            x=pixmap_area.x(), y=pixmap_area.y(),
+            w=pixmap_area.width(), h=pixmap_area.height(),
+            dpr=dpr,
+        )
 
-        pixmap = self.original_pixmap.copy(pixmap_area)
+        pixmap = QPixmap(pixmap_area.size())
+        pixmap.setDevicePixelRatio(self.original_pixmap.devicePixelRatio())
         painter = QPainter(pixmap)
+
         self.scene().render(
             painter,
-            QRect(QPoint(), pixmap_area.size()),
+            pixmap.rect(),
             pixmap_area,
             Qt.AspectRatioMode.KeepAspectRatio,
         )
+        painter.end()
         return pixmap
 
 
@@ -472,14 +509,11 @@ class EditorWindow(QLabel):
         self.toolGroup = QActionGroup(self)
         self.toolGroup.setExclusive(True)
         self.action_op_text: QAction = toolbar.addAction(
-            self.themer.get_icon("Text"), "Pin",
+            self.themer.get_icon("Text"), "Add text",
         )
         self.action_op_text.setCheckable(True)
         self.toolGroup.addAction(self.action_op_text)
         self.action_op_text.triggered.connect(
-            partial(self.select_tool, Op.Text)
-        )
-        self.action_op_text.toggled.connect(
             partial(self.select_tool, Op.Text)
         )
 
@@ -535,19 +569,27 @@ class EditorWindow(QLabel):
 
         self.themer.themeChanged.connect(self.update_icons)
 
-    def select_tool(self, op: Op):
+    def select_tool(self, op: Op, *args):
         # click checked action to uncheck it
+        logger.debug('args: {args}', args=args)
         if self.editorView.op == op:
+            logger.debug('tool.uncheck {}', op)
             self.toolGroup.setExclusive(False)
             if op == Op.Text:
                 self.action_op_text.setChecked(False)
             self.editorView.selectOp(Op.None_)
             self.toolGroup.setExclusive(True)
         else:
+            logger.debug('tool.switch {} => {}', self.editorView.op, op)
             self.toolGroup.checkedAction().setChecked(False)
             if op == Op.Text:
                 self.action_op_text.setChecked(True)
             self.editorView.selectOp(op)
+
+    def unset_tool(self):
+        self.toolGroup.setExclusive(False)
+        self.action_op_text.setChecked(False)
+        self.toolGroup.setExclusive(True)
 
     def update_icons(self):
         self.setWindowIcon(self.themer.get_icon("Capture"))
@@ -555,6 +597,7 @@ class EditorWindow(QLabel):
         self.action_pin.setIcon(self.themer.get_icon("Pin"))
         self.action_save.setIcon(self.themer.get_icon("Save"))
         self.action_copy.setIcon(self.themer.get_icon("CopyToClipboard"))
+        self.action_op_text.setIcon(self.themer.get_icon("Text"))
 
     def edit_new_capture(self, pixmap: QPixmap):
         logger.debug('editor.new_capture')
@@ -565,6 +608,7 @@ class EditorWindow(QLabel):
         self.toolbar.hide()
         self.size_tip.hide()
         self.scene.clear()
+        self.unset_tool()
         self.editorView.reset()
         self.hide()
         return event.ignore()
