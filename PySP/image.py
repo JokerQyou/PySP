@@ -29,6 +29,9 @@ class ImageLabel(QLabel):
         shadow.setOffset(1)
         self.setGraphicsEffect(shadow)
 
+        self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.customContextMenuRequested.connect(self.show_context_menu)
+
         # 用于记录拖动时的鼠标位置
         self.mouse_offset = QPoint()
         self.move(pos)
@@ -40,14 +43,14 @@ class ImageLabel(QLabel):
         self.raise_()
         if event.button() == Qt.MouseButton.LeftButton:
             self.mouse_offset = event.pos()
-        elif event.button() == Qt.MouseButton.RightButton:
-            self.show_context_menu(event)
+        super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event: QMouseEvent):
-        if event.buttons() & Qt.LeftButton:
+        if event.buttons() & Qt.MouseButton.LeftButton:
             self.move(event.globalPos() - self.mouse_offset)
+        super().mouseMoveEvent(event)
 
-    def show_context_menu(self, event: QMouseEvent):
+    def show_context_menu(self, pos: QPoint):
         menu = QMenu(self)
 
         copy_action = QAction(
@@ -75,7 +78,7 @@ class ImageLabel(QLabel):
         destroy_action.triggered.connect(self.destroy_image)
         menu.addAction(destroy_action)
 
-        menu.exec(event.globalPos())
+        menu.exec(self.mapToGlobal(pos))
 
     def copy_image(self):
         logger.debug('image.copy')
@@ -90,6 +93,14 @@ class ImageLabel(QLabel):
         top_widget = QApplication.widgetAt(QCursor.pos())
         if top_widget is not self or event.angleDelta().y() == 0:
             return event.ignore()
+
+        # control + mouse wheel to adjust window opacity, up is more opaque, down is more transparent
+        if event.modifiers() & Qt.KeyboardModifier.ControlModifier:
+            opacity = self.windowOpacity()
+            opacity += 0.05 if event.angleDelta().y() > 0 else -0.05
+            opacity = max(0.05, min(1, opacity))
+            self.setWindowOpacity(opacity)
+            return event.accept()
 
         zoom_factor = 1.1 if event.angleDelta().y() > 0 else 0.9
         new_size = QSizeF(self.size()) * zoom_factor

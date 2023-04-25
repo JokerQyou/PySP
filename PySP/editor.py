@@ -103,7 +103,6 @@ class EditorView(QGraphicsView):
         self.screenMask.setBrush(QBrush(QColor(0, 0, 0, 128)))
         self.screenMask.setPen(QPen(Qt.GlobalColor.transparent))
         self.original_pixmap = QPixmap()
-        self.selectOp(Op.None_)
 
     def start_edit(self, pixmap: QPixmap):
         self.reset()  # TODO Remove this
@@ -132,7 +131,13 @@ class EditorView(QGraphicsView):
             return
 
         if self.op == Op.Text:
-            self.setCursor(QCursor(Qt.CursorShape.IBeamCursor))
+            # check if there's a text item under the cursor
+            item = self.scene().itemAt(pos, QTransform())
+            if item is not None and isinstance(item, NodeTag):
+                item.update_cursor_shape(item.mapFromScene(pos))
+                pass
+            else:
+                self.setCursor(QCursor(Qt.CursorShape.IBeamCursor))
             return
 
         # if cursor is on the border, change to resize cursor
@@ -173,8 +178,7 @@ class EditorView(QGraphicsView):
             elif at_top or at_bottom or on_top or on_bottom:
                 self.setCursor(QCursor(Qt.CursorShape.SizeVerCursor))
             else:
-                #  FIXME
-                self.setCursor(QCursor(Qt.CursorShape.CrossCursor))
+                self.unsetCursor()
 
     def selectOp(self, op: Op):
         self.op = op
@@ -242,6 +246,13 @@ class EditorView(QGraphicsView):
                             point.x(),
                             point.y() - text_item.boundingRect().height() / 2
                         )
+                        # item might have been shrinked, so we need to update
+                        # the whole view, in case some drawn content is still at the old position
+                        text_item.scaleChanged.connect(self.update)
+                        text_item.xChanged.connect(self.update)
+                        text_item.yChanged.connect(self.update)
+                        text_item.widthChanged.connect(self.update)
+                        text_item.heightChanged.connect(self.update)
                         logger.debug(
                             'item.text added @({x}, {y})', x=point.x(), y=point.y()
                         )
@@ -404,36 +415,21 @@ class EditorView(QGraphicsView):
         self.scene().update()
 
         area = self.selectionArea.normalized()
-        logger.debug(
-            'selection_area=({x}, {y}) size=({w}×{h})',
-            x=area.x(), y=area.y(),
-            w=area.width(), h=area.height(),
-        )
         dpr = self.original_pixmap.devicePixelRatioF()
 
         pixmap_area = QRectF(
-            area.topLeft().toPointF(),  # somehow the topleft point coordinate is correct
-            # but the size (width and height) needs to be scaled by dpr
+            area.topLeft().toPointF() * dpr,
             area.size().toSizeF() * dpr,
         ).toRect()
-        logger.debug(
-            'pixmap_area=({x}, {y}) size=({w}×{h}), dpr={dpr}',
-            x=pixmap_area.x(), y=pixmap_area.y(),
-            w=pixmap_area.width(), h=pixmap_area.height(),
-            dpr=dpr,
-        )
 
-        pixmap = QPixmap(pixmap_area.size())
-        pixmap.setDevicePixelRatio(self.original_pixmap.devicePixelRatio())
+        pixmap = self.original_pixmap.copy(pixmap_area)
         painter = QPainter(pixmap)
-
         self.scene().render(
             painter,
-            pixmap.rect(),
+            QRect(QPoint(), pixmap_area.size()),
             pixmap_area,
             Qt.AspectRatioMode.KeepAspectRatio,
         )
-        painter.end()
         return pixmap
 
 
@@ -476,7 +472,7 @@ class EditorWindow(QLabel):
         self.toolGroup = QActionGroup(self)
         self.toolGroup.setExclusive(True)
         self.action_op_text: QAction = toolbar.addAction(
-            self.themer.get_icon("Text"), "Add text",
+            self.themer.get_icon("Text"), "Pin",
         )
         self.action_op_text.setCheckable(True)
         self.toolGroup.addAction(self.action_op_text)
@@ -553,18 +549,12 @@ class EditorWindow(QLabel):
                 self.action_op_text.setChecked(True)
             self.editorView.selectOp(op)
 
-    def unset_tool(self):
-        self.toolGroup.setExclusive(False)
-        self.action_op_text.setChecked(False)
-        self.toolGroup.setExclusive(True)
-
     def update_icons(self):
         self.setWindowIcon(self.themer.get_icon("Capture"))
         self.action_cancel.setIcon(self.themer.get_icon("Quit"))
         self.action_pin.setIcon(self.themer.get_icon("Pin"))
         self.action_save.setIcon(self.themer.get_icon("Save"))
         self.action_copy.setIcon(self.themer.get_icon("CopyToClipboard"))
-        self.action_op_text.setIcon(self.themer.get_icon("Text"))
 
     def edit_new_capture(self, pixmap: QPixmap):
         logger.debug('editor.new_capture')
@@ -576,7 +566,6 @@ class EditorWindow(QLabel):
         self.size_tip.hide()
         self.scene.clear()
         self.editorView.reset()
-        self.unset_tool()
         self.hide()
         return event.ignore()
 
