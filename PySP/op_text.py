@@ -1,7 +1,7 @@
 from enum import Enum
 from typing import Optional
 
-from PySide6.QtWidgets import QGraphicsTextItem, QGraphicsSceneMouseEvent, QStyleOptionGraphicsItem, QWidget, QStyleOption, QGraphicsScale, QGraphicsItem
+from PySide6.QtWidgets import QGraphicsTextItem, QGraphicsSceneMouseEvent, QStyleOptionGraphicsItem, QWidget, QStyleOption, QGraphicsScale, QGraphicsItem, QStyle
 from PySide6.QtCore import Qt, QEvent, QPoint, QRect, QRectF, QPointF
 from PySide6.QtGui import QFocusEvent, QFont, QInputMethodEvent, QKeyEvent, QPainter, QPen, QColor, QCursor
 
@@ -58,6 +58,14 @@ class NodeTag(QGraphicsTextItem):
     def paint(self, painter: QPainter, option: QStyleOptionGraphicsItem, widget: QWidget) -> None:
         if self.isSelected() or self.hasFocus():
             painter.save()
+
+            # remove the selected and focus states from the option, so that the
+            # base class does not draw a dashed border around the text item.
+            # PySide6 does not export .state attribtue typing, but it is there.
+            if option.state & QStyle.StateFlag.State_Selected:
+                option.state &= ~QStyle.StateFlag.State_Selected
+            if option.state & QStyle.StateFlag.State_HasFocus:
+                option.state &= ~QStyle.StateFlag.State_HasFocus
 
             border_pen = QPen(
                 QColor(0, 122, 204, 255),
