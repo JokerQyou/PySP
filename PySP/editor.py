@@ -111,7 +111,12 @@ class EditorView(QGraphicsView):
         self.reset()  # TODO Remove this
 
         self.original_pixmap = pixmap
-        self.scene().setSceneRect(pixmap.rect())
+        self.scene().setSceneRect(
+            QRect(
+                QPoint(0, 0),
+                pixmap.deviceIndependentSize().toSize(),
+            )
+        )
         self.setFixedSize(pixmap.deviceIndependentSize().toSize())
         self.screenMask.setRect(self.scene().sceneRect())
         self.scene().addPixmap(pixmap)
