@@ -502,6 +502,10 @@ class EditorWindow(QLabel):
 
         self.scene = QGraphicsScene(self)
         self.editorView = EditorView(self.scene, self)
+        self.editorView.setRenderHints(
+            QPainter.RenderHint.Antialiasing
+            | QPainter.RenderHint.SmoothPixmapTransform
+        )
 
         # Floating toolbar
         toolbar = QToolBar(self)

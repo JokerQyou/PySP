@@ -44,6 +44,8 @@ class ThemeContainer(QObject):
         sets = []
         # list directories under resources/ and load icons from there, using directory name as set name
         for directory in sorted(os.listdir("resources")):
+            if directory.startswith('_'):
+                continue
             # strip off number suffix from directory name, then trim and replace all - with spaces
             name = ' '.join([
                 s.capitalize()
